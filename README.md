@@ -1,6 +1,6 @@
 # apk injector
 # installation:
-      git clone https://github.com/sirai-ayoub/apk_injector.git
+      git clone https://github.com/siraiayoub/apk_injector.git
       chmod 777 apk_injector/x-apk.py && apk_injector/x-apk.py
 
 # Usage:
